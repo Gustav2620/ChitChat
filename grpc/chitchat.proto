@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package chitchat;
+
+option go_package = "chitchat/chitchat;chitchat";
+
+//Bidirectional streaming
+service ChitChatService {
+    rpc Chat(stream ChatMessage) returns(stream ChatMessage);
+}
+
+message ChatMessage{
+    string client_id = 1;
+    string content = 2;
+    int64 logical_time = 3;
+    MessageType type = 4;
+}
+
+enum MessageType{
+    JOIN = 0;
+    LEAVE = 1;
+    CHAT = 2;
+}
