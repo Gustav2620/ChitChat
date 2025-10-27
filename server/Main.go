@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"time"
 	"log/slog"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
-	proto "github.com/Gustav2620/ChitChat/grpc"
+	chitchat "github.com/Gustav2620/ChitChat/grpc"
 	
 	"sync"
 
@@ -44,8 +46,6 @@ func main() {
 		logger:       logger,
 		logicalClock: 0,
 	})
-	
-	chitchat.RegisterChitChatServiceServer(s, srv)
 
 	//Start gorutine
 	go func() {
@@ -86,7 +86,7 @@ func (s *server) Chat(stream chitchat.ChitChatService_ChatServer) error {
 	s.incrementClock()
 	joinMsg := &chitchat.ChatMessage{
 		ClientId:    clientID,
-		Content:     fmt.Sprintf("Participant %s joined Chit Chat", clientID),
+		Content:     fmt.Sprintf("Participant %s joined Chit Chat at logical time %d", clientID, s.logicalClock),
 		LogicalTime: s.getClock(),
 		Type:        chitchat.MessageType_JOIN,
 	}
@@ -166,11 +166,12 @@ func (s *server) Chat(stream chitchat.ChitChatService_ChatServer) error {
 
 func (s *server) handleIncomingMessage(clientID string, msg *chitchat.ChatMessage){
 	s.logger.Info("Message received",
-		slog.String("Client ID", client_id),
+		slog.String("Client ID", clientID),
 		slog.String("Content", msg.Content),
 		slog.String("Type", msg.Type.String()))
 	
-	s.updateClock(msg.LogicalTime)
+	s.updateClockOnReceive(msg.LogicalTime)
+
 
 	if(msg.Type == chitchat.MessageType_CHAT && len(msg.Content) > 128) {
 		s.logger.Warn("Message too long",
@@ -196,7 +197,7 @@ func (s *server) broadcastJoin(clientID string) {
 		Type:		chitchat.MessageType_JOIN,
 	}
 
-	s.updateClock(msg.LogicalTime)
+	s.updateClockOnReceive(msg.LogicalTime)
 	s.broadcast(msg)
 	s.logger.Info("Join received",
 		slog.String("Client ID", clientID),
@@ -208,10 +209,10 @@ func (s *server) broadcastLeave(clientID string) {
 		ClientId:	clientID,
 		Content:	fmt.Sprintf("%d left chat", clientID),
 		LogicalTime: s.getLogicalTime(),
-		Type:		chitchat.MessageType_Leave,
+		Type:		chitchat.MessageType_LEAVE,
 	}
 
-	s.updateClock(msg.LogicalTime)
+	s.updateClockOnReceive(msg.LogicalTime)
 	s.broadcast(msg)
 	s.logger.Info("Leave received",
 		slog.String("Client ID", clientID),
@@ -225,7 +226,7 @@ func (s *server) broadcast(msg *chitchat.ChatMessage){
 	wg := sync.WaitGroup{}
 	for clientID, stream := range s.clients{
 		wg.Add(1)
-		go func(cid String, st chitchat.ChitChatService_ChatServer){
+		go func(cid string, st chitchat.ChitChatService_ChatServer){
 			defer wg.Done()
 			if err := st.Send(msg); err != nil {
 				s.logger.Warn("Failed to send to client",
@@ -249,6 +250,27 @@ func (s *server) removeClient(clientID string) {
 	delete(s.clients, clientID)
 }
 
-func generateClientID(){
+func generateClientID() string{
 	return fmt.Sprintf("client_%d", time.Now().UnixNano()%1000000)
+}
+
+func (s *server) incrementClock() {
+    s.clockMu.Lock()
+    s.logicalClock++
+    s.clockMu.Unlock()
+}
+
+func (s *server) getClock() int64 {
+    s.clockMu.RLock()
+    defer s.clockMu.RUnlock()
+    return s.logicalClock
+}
+
+func (s *server) updateClockOnReceive(received int64) {
+    s.clockMu.Lock()
+    if received > s.logicalClock {
+        s.logicalClock = received
+    }
+    s.logicalClock++
+    s.clockMu.Unlock()
 }

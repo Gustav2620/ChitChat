@@ -5,20 +5,19 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"time"
-
-	proto "github.com/Gustav2620/ChitChat/grpc"
+	"log/slog"
+	"google.golang.org/grpc/credentials/insecure"
+	chitchat "github.com/Gustav2620/ChitChat/grpc"
 
 	"google.golang.org/grpc"
 )
 
 func main() {
-	port := ":50051"
 	id := flag.String("id", "client1", "client id")
 	name := flag.String("name", "Client", "display name")
-	addr := flag.String("addr", "localhost:%s", "server addr", *port)
+	addr := flag.String("addr", "localhost:50051", "server addr")
 	flag.Parse()
 
 	if *id == "" {
