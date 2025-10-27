@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	proto "github.com/Gustav2620/ChitChat/grpc/chitchat"
+	proto "github.com/Gustav2620/ChitChat/grpc"
 	
 	"sync"
 
@@ -39,11 +39,11 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	srv := %server{
-		clients: make(map[string]chitchat.ChitChatService_ChatServer),
+	chitchat.RegisterChitChatServiceServer(s, &server{
+		clients:      make(map[string]chitchat.ChitChatService_ChatServer),
 		logger:       logger,
 		logicalClock: 0,
-	}
+	})
 	
 	chitchat.RegisterChitChatServiceServer(s, srv)
 
@@ -172,7 +172,7 @@ func (s *server) handleIncomingMessage(clientID string, msg *chitchat.ChatMessag
 	
 	s.updateClock(msg.LogicalTime)
 
-	if(msg.Type == chitchat.MessageType_CHAT && len(msg.Content) > 128 {
+	if(msg.Type == chitchat.MessageType_CHAT && len(msg.Content) > 128) {
 		s.logger.Warn("Message too long",
 			slog.String("Client ID", clientID),
 			slog.Int("Lenght", len(msg.Content)))
@@ -180,7 +180,7 @@ func (s *server) handleIncomingMessage(clientID string, msg *chitchat.ChatMessag
 	}
 
 	s.broadcast(msg)
-)
+}
 
 func (s *server) getLogicalTime() int64{
 	s.clockMu.RLock()
@@ -193,7 +193,7 @@ func (s *server) broadcastJoin(clientID string) {
 		ClientId:	clientID,
 		Content:	fmt.Sprintf("%d joined chat", clientID),
 		LogicalTime: s.getLogicalTime(),
-		Type:		chitchat.MessageType_JOIN
+		Type:		chitchat.MessageType_JOIN,
 	}
 
 	s.updateClock(msg.LogicalTime)
@@ -208,7 +208,7 @@ func (s *server) broadcastLeave(clientID string) {
 		ClientId:	clientID,
 		Content:	fmt.Sprintf("%d left chat", clientID),
 		LogicalTime: s.getLogicalTime(),
-		Type:		chitchat.MessageType_Leave
+		Type:		chitchat.MessageType_Leave,
 	}
 
 	s.updateClock(msg.LogicalTime)

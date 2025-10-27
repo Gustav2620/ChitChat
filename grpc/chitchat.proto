@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package chitchat;
 
-option go_package = "github.com/Gustav2620/ChitChat/grpc/chitchat;chitchat";
+option go_package = "github.com/Gustav2620/ChitChat/grpc;chitchat";
 
 service ChitChatService {
   rpc Chat(stream ChatMessage) returns (stream ChatMessage);

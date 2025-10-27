@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.33.0
-// source: chitchat.proto
+// source: grpc/chitchat.proto
 
 package chitchat
 
@@ -111,5 +111,5 @@ var ChitChatService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "chitchat.proto",
+	Metadata: "grpc/chitchat.proto",
 }

@@ -1,6 +1,6 @@
 module github.com/Gustav2620/ChitChat
 
-go 1.25.0
+go 1.25.3
 
 require (
 	google.golang.org/grpc v1.76.0

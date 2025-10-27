@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	proto "github.com/Gustav2620/ChitChat/grpc/chitchat"
+	proto "github.com/Gustav2620/ChitChat/grpc"
 
 	"google.golang.org/grpc"
 )
