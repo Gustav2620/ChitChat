@@ -9,60 +9,66 @@ import (
 	"os"
 	"time"
 
-	//"chitchat/client/grpc/chitchat"
+	proto "github.com/Gustav2620/ChitChat/grpc/chitchat"
 
 	"google.golang.org/grpc"
 )
 
 func main() {
+	port := ":50051"
 	id := flag.String("id", "client1", "client id")
 	name := flag.String("name", "Client", "display name")
-	addr := flag.String("addr", "localhost:5050", "server addr")
+	addr := flag.String("addr", "localhost:%s", "server addr", *port)
 	flag.Parse()
 
-	conn, err := grpc.Dial(*addr, grpc.WithInsecure())
-	if err != nil {
-		log.Fatalf("dial: %v", err)
+	if *id == "" {
+		fmt.Println("Please provide -id")
+		return
+	}
 
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logger.Error("Failed to dial server", "error", err)
+		return
 	}
 	defer conn.Close()
 
-	client := pb.NewChitChatServiceClient(conn)
+	client := chitchat.NewChitChatServiceClient(conn)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stream, err := client.Connect(ctx)
+	stream, err := client.Chat(ctx)
 	if err != nil {
-		log.Fatalf("connect: %v", err)
+		logger.Error("Failed to open chat stream", "error", err)
+		return
 	}
 
-	if err := stream.Send(&pb.ClientEvent{
-		Payload: &pb.ClientEvent_Join{
-			Join: &pb.JoinRequest{
-				ClientId:    *id,
-				DisplayName: *name,
-			},
-		},
-	}); err != nil {
-		log.Fatalf("send join: %v", err)
+	// Send JOIN first
+	joinMsg := &chitchat.ChatMessage{
+		ClientId:    *id,
+		Content:     fmt.Sprintf("%s", *name),
+		LogicalTime: 0,
+		Type:        chitchat.MessageType_JOIN,
 	}
+	if err := stream.Send(joinMsg); err != nil {
+		logger.Error("Failed to send JOIN", "error", err)
+		return
+	}
+	logger.Info("Sent JOIN", "component", "Client", "client_id", *id)
 
 	go func() {
 		for {
-			ev, err := stream.Recv()
+			msg, err := stream.Recv()
 			if err != nil {
-				log.Printf("[%s] recv error: %v", *id, err)
+				logger.Info("Receive error or stream closed", "error", err)
 				return
 			}
-			switch p := ev.Payload.(type) {
-			case *pb.ServerEvent_Chat:
-				fmt.Printf("[%s] CHAT %s: %s\n", *id, p.Chat.ClientId, p.Chat.Content)
-			case *pb.ServerEvent_JoinNotification:
-				fmt.Printf("[%s] JOIN %s\n", *id, p.JoinNotification.ClientId)
-			case *pb.ServerEvent_LeaveNotification:
-				fmt.Printf("[%s] LEAVE %s\n", *id, p.LeaveNotification.ClientId)
-			default:
-			}
+			fmt.Printf("[%s] %s (type=%s, time=%d)\n", *id, msg.Content, msg.Type.String(), msg.LogicalTime)
+			logger.Info("Received broadcast", "component", "Client", "client_id", *id, "from", msg.ClientId, "type", msg.Type.String(), "logical_time", msg.LogicalTime, "content", msg.Content)
 		}
 	}()
 
@@ -71,27 +77,37 @@ func main() {
 	for scanner.Scan() {
 		text := scanner.Text()
 		if text == "" {
-			stream.Send(&pb.ClientEvent{
-				Payload: &pb.ClientEvent_Leave{
-					Leave: &pb.LeaveReqeust{
-						ClientId: *id,
-					},
-				},
-			})
+			leaveMsg := &chitchat.ChatMessage{
+				ClientId:    *id,
+				Content:     "",
+				LogicalTime: 0,
+				Type:        chitchat.MessageType_LEAVE,
+			}
+			if err := stream.Send(leaveMsg); err != nil {
+				logger.Error("Failed to send LEAVE", "error", err)
+			}
+			// allow some time for server to broadcast leave
+			time.Sleep(200 * time.Millisecond)
 			break
 		}
-		if err := stream.Send(&pb.ClientEvent{
-			Payload: &pb.ClientEvent_Chat{
-				Chat: &pb.ChatPayload{
-					MessageId: fmt.Sprintf("%s-%d", *id, time.Now().UnixNano()),
-					ClientId:  *id,
-					Content:   text,
-					// logical_time left for your Lamport implementation
-				},
-			},
-		}); err != nil {
-			log.Printf("send chat err: %v", err)
+
+		chatMsg := &chitchat.ChatMessage{
+			ClientId:    *id,
+			Content:     text,
+			LogicalTime: 0, // clients may set their own logical time if desired
+			Type:        chitchat.MessageType_CHAT,
+		}
+		if len(chatMsg.Content) > 128 {
+			logger.Warn("Message too long; trimming to 128 chars")
+			chatMsg.Content = chatMsg.Content[:128]
+		}
+		if err := stream.Send(chatMsg); err != nil {
+			logger.Error("Failed to send chat", "error", err)
 			break
 		}
 	}
+	cancel()
+	// wait for the last messages to finish sending
+	time.Sleep(100 * time.Millisecond)
+	logger.Info("Client exiting", "component", "Client", "client_id", *id)
 }

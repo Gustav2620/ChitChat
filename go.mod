@@ -1,4 +1,4 @@
-module chitchat
+module github.com/Gustav2620/ChitChat
 
 go 1.25.0
 
